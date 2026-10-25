@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kuña Bodega - Sistema POS</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            #factura-impresion, #factura-impresion * {
+                visibility: visible;
+            }
+            #factura-impresion {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+            }
+            .no-print {
+                display: none !important;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans h-screen flex flex-col">
+
+    <!-- Encabezado / Header -->
+    <header class="bg-indigo-900 text-white p-4 shadow-md flex justify-between items-center no-print">
+        <div class="flex items-center space-x-3">
+            <h1 class="text-2xl font-bold tracking-wide">KUÑA BODEGA</h1>
+            <span class="text-xs bg-indigo-700 text-indigo-200 px-2 py-1 rounded-full">POS v2.0</span>
+        </div>
+        <nav class="space-x-2">
+            <button onclick="cambiarPestana('caja')" id="btn-caja" class="px-4 py-2 bg-indigo-700 hover:bg-indigo-600 rounded-lg font-semibold transition">🛒 Caja / Venta</button>
+            <button onclick="cambiarPestana('inventario')" id="btn-inventario" class="px-4 py-2 bg-indigo-800 hover:bg-indigo-600 rounded-lg font-semibold transition">🍾 Productos</button>
+            <button onclick="cambiarPestana('historial')" id="btn-historial" class="px-4 py-2 bg-indigo-800 hover:bg-indigo-600 rounded-lg font-semibold transition">📊 Historial y Ganancias</button>
+            <button onclick="cambiarPestana('configuracion')" id="btn-configuracion" class="px-4 py-2 bg-indigo-800 hover:bg-indigo-600 rounded-lg font-semibold transition">⚙️ Datos Factura</button>
+        </nav>
+    </header>
+
+    <!-- Contenido Principal -->
+    <main class="flex-1 p-4 overflow-y-auto no-print">
+
+        <!-- SECCIÓN 1: CAJA / PUNTO DE VENTA -->
+        <section id="sec-caja" class="grid grid-cols-1 lg:grid-cols-3 gap-4 h-full">
+            <!-- Selector de Productos -->
+            <div class="lg:col-span-2 bg-white p-4 rounded-lg shadow border flex flex-col">
+                <div class="mb-4">
+                    <input type="text" id="buscar-producto" onkeyup="filtrarProductos()" placeholder="🔍 Buscar bebida por nombre..." class="w-full p-3 border rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div id="lista-productos" class="grid grid-cols-2 md:grid-cols-3 gap-3 overflow-y-auto max-h-[calc(100vh-220px)] p-1">
+                    <!-- Productos cargados dinámicamente -->
+                </div>
+            </div>
+
+            <!-- Detalle de la Venta actual -->
+            <div class="bg-white p-4 rounded-lg shadow border flex flex-col justify-between">
+                <div>
+                    <h2 class="text-xl font-bold border-b pb-2 mb-3 text-gray-800">Detalle de la Venta</h2>
+                    <div class="max-h-[280px] overflow-y-auto mb-4">
+                        <table class="w-full text-left text-xs md:text-sm">
+                            <thead class="bg-gray-100 border-b">
+                                <tr>
+                                    <th class="p-2">Item</th>
+                                    <th class="p-2 text-right">P. Unit.</th>
+                                    <th class="p-2 text-center">Cant.</th>
+                                    <th class="p-2 text-right">Subtotal</th>
+                                    <th class="p-2 text-center"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabla-carrito">
+                                <!-- Filas del carrito -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="border-t pt-3 space-y-2 bg-gray-50 p-3 rounded-lg">
+                    <div class="flex justify-between text-2xl font-black text-gray-900">
+                        <span>TOTAL:</span>
+                        <span id="txt-total">0 ₲</span>
+                    </div>
+
+                    <div class="pt-2 border-t space-y-2">
+                        <!-- Datos del Cliente para Factura -->
+                        <div class="grid grid-cols-2 gap-2">
+                            <input type="text" id="cliente-ruc" placeholder="RUC / C.I. Cliente" class="p-2 border rounded text-sm w-full">
+                            <input type="text" id="cliente-nombre" placeholder="Nombre / Razón Social" class="p-2 border rounded text-sm w-full">
+                        </div>
+
+                        <!-- Monto recibido y Vuelto -->
+                        <div class="grid grid-cols-2 gap-2 pt-1">
+                            <div>
+                                <label class="text-xs text-gray-600 block font-bold">Paga con:</label>
+                                <input type="number" id="monto-pagado" oninput="calcularVuelto()" placeholder="0" class="p-2 border rounded text-lg font-bold w-full">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-600 block font-bold">Vuelto:</label>
+                                <div id="txt-vuelto" class="p-2 bg-gray-200 rounded text-lg font-extrabold text-green-700">0 ₲</div>
+                            </div>
+                        </div>
+
+                        <button onclick="procesarVenta()" class="w-full mt-3 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg text-lg transition shadow-lg">
+                            ✅ Registrar Venta e Imprimir
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECCIÓN 2: CARGA Y GESTIÓN DE PRODUCTOS -->
+        <section id="sec-inventario" class="hidden bg-white p-6 rounded-lg shadow border">
+            <h2 id="titulo-form-producto" class="text-2xl font-bold mb-4 text-gray-800">Cargar Nueva Bebida</h2>
+            <form id="form-producto" onsubmit="guardarProducto(event)" class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 bg-gray-50 p-4 rounded-lg border">
+                <input type="hidden" id="p-id">
+                <div>
+                    <label class="block text-sm font-semibold mb-1">Nombre de la Bebida</label>
+                    <input type="text" id="p-nombre" required placeholder="Ej: Pilsen 940ml" class="w-full p-2 border rounded">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold mb-1">Costo Unitario (Compra)</label>
+                    <input type="number" id="p-costo" required placeholder="Ej: 7000" class="w-full p-2 border rounded">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold mb-1">Precio Unitario (Venta)</label>
+                    <input type="number" id="p-venta" required placeholder="Ej: 10000" class="w-full p-2 border rounded">
+                </div>
+                <div class="flex items-end space-x-2">
+                    <button type="submit" id="btn-guardar-prod" class="flex-1 p-2 bg-indigo-600 text-white font-bold rounded hover:bg-indigo-700">💾 Guardar</button>
+                    <button type="button" id="btn-cancelar-edit" onclick="cancelarEdicion()" class="hidden p-2 bg-gray-500 text-white font-bold rounded hover:bg-gray-600">Cancelar</button>
+                </div>
+            </form>
+
+            <h3 class="text-xl font-bold mb-3 text-gray-800">Inventario Registrado</h3>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse border">
+                    <thead>
+                        <tr class="bg-gray-100 border-b">
+                            <th class="p-3 border">Nombre</th>
+                            <th class="p-3 border text-right">Costo Unitario</th>
+                            <th class="p-3 border text-right">Precio Unitario</th>
+                            <th class="p-3 border text-right">Ganancia x Unidad</th>
+                            <th class="p-3 border text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-productos">
+                        <!-- Filas de productos cargados -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- SECCIÓN 3: HISTORIAL PERMANENTE Y GANANCIAS -->
+        <section id="sec-historial" class="hidden bg-white p-6 rounded-lg shadow border">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                <h2 class="text-2xl font-bold text-gray-800">Historial de Ventas y Ganancias</h2>
+                <div class="flex space-x-4 w-full md:w-auto">
+                    <div class="bg-green-100 p-3 rounded-lg border border-green-300 flex-1 md:flex-none">
+                        <span class="text-xs text-green-800 block font-semibold">Ventas Totales</span>
+                        <span id="resumen-total-ventas" class="text-xl font-black text-green-900">0 ₲</span>
+                    </div>
+                    <div class="bg-blue-100 p-3 rounded-lg border border-blue-300 flex-1 md:flex-none">
+                        <span class="text-xs text-blue-800 block font-semibold">Ganancia Neta</span>
+                        <span id="resumen-total-ganancia" class="text-xl font-black text-blue-900">0 ₲</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse border text-sm">
+                    <thead>
+                        <tr class="bg-gray-100 border-b">
+                            <th class="p-3 border">Fecha y Hora</th>
+                            <th class="p-3 border">Cliente / RUC</th>
+                            <th class="p-3 border">Detalle (Cant. x Producto @ P. Unit.)</th>
+                            <th class="p-3 border text-right">Total Venta</th>
+                            <th class="p-3 border text-right">Ganancia Neta</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-historial">
+                        <!-- Filas del historial -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- SECCIÓN 4: CONFIGURACIÓN DE FACTURACIÓN -->
+        <section id="sec-configuracion" class="hidden bg-white p-6 rounded-lg shadow border max-w-2xl mx-auto">
+            <h2 class="text-2xl font-bold mb-4 text-gray-800">Configuración de Facturación</h2>
+            <form onsubmit="guardarConfiguracion(event)" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-semibold mb-1">Nombre Comercial de la Bodega</label>
+                    <input type="text" id="cfg-nombre" required class="w-full p-2 border rounded" value="Kuña Bodega">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold mb-1">RUC de la Bodega</label>
+                    <input type="text" id="cfg-ruc" required placeholder="Ej: 80012345-6" class="w-full p-2 border rounded">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold mb-1">Dirección</label>
+                    <input type="text" id="cfg-direccion" placeholder="Ej: Av. Principal" class="w-full p-2 border rounded">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold mb-1">Teléfono / Contacto</label>
+                    <input type="text" id="cfg-telefono" placeholder="Ej: 0981 123 456" class="w-full p-2 border rounded">
+                </div>
+                <button type="submit" class="w-full p-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700">💾 Guardar Datos</button>
+            </form>
+        </section>
+
+    </main>
+
+    <!-- PLANTILLA DE FACTURA / TICKET (IMPRESIÓN) -->
+    <div id="factura-impresion" class="hidden p-4 font-mono text-xs w-[80mm] mx-auto border bg-white">
+        <div class="text-center border-b pb-2 mb-2">
+            <h2 id="fact-empresa-nombre" class="font-bold text-base">KUÑA BODEGA</h2>
+            <p id="fact-empresa-ruc">RUC: -</p>
+            <p id="fact-empresa-dir">-</p>
+            <p id="fact-empresa-tel">-</p>
+        </div>
+        <div class="border-b pb-2 mb-2">
+            <p id="fact-fecha">Fecha: </p>
+            <p id="fact-cliente-nombre">Cliente: Sin Nombre</p>
+            <p id="fact-cliente-ruc">RUC: XXXXXXX</p>
+        </div>
+        <table class="w-full mb-2">
+            <thead>
+                <tr class="border-b">
+                    <th class="text-left">Cant.</th>
+                    <th class="text-left">Producto</th>
+                    <th class="text-right">P.Unit</th>
+                    <th class="text-right">Total</th>
+                </tr>
+            </thead>
+            <tbody id="fact-items"></tbody>
+        </table>
+        <div class="border-t pt-2 space-y-1">
+            <div class="flex justify-between font-bold text-sm">
+                <span>TOTAL:</span>
+                <span id="fact-total">0</span>
+            </div>
+            <div class="flex justify-between">
+                <span>Pagado:</span>
+                <span id="fact-pagado">0</span>
+            </div>
+            <div class="flex justify-between">
+                <span>Vuelto:</span>
+                <span id="fact-vuelto">0</span>
+            </div>
+        </div>
+        <div class="text-center mt-4 border-t pt-2">
+            <p>¡Gracias por su preferencia!</p>
+        </div>
+    </div>
+
+    <!-- LÓGICA JAVASCRIPT -->
+    <script>
+        let productos = JSON.parse(localStorage.getItem('kb_productos')) || [];
+        let ventas = JSON.parse(localStorage.getItem('kb_ventas')) || [];
+        let configuracion = JSON.parse(localStorage.getItem('kb_config')) || {
+            nombre: "Kuña Bodega",
+            ruc: "80000000-0",
+            direccion: "Ciudad del Este / Paraguay",
+            telefono: "0981000000"
+        };
+        let carrito = [];
+
+        document.addEventListener('DOMContentLoaded', () => {
+            renderProductosCaja();
+            renderTablaProductos();
+            renderHistorial();
+            cargarFormConfiguracion();
+        });
+
+        function cambiarPestana(pestana) {
+            ['caja', 'inventario', 'historial', 'configuracion'].forEach(p => {
+                document.getElementById(`sec-${p}`).classList.add('hidden');
+                document.getElementById(`btn-${p}`).classList.remove('bg-indigo-600');
+                document.getElementById(`btn-${p}`).classList.add('bg-indigo-800');
+            });
+            document.getElementById(`sec-${pestana}`).classList.remove('hidden');
+            document.getElementById(`btn-${pestana}`).classList.add('bg-indigo-600');
+            document.getElementById(`btn-${pestana}`).classList.remove('bg-indigo-800');
+        }
+
+        function formatoMoneda(valor) {
+            return new Intl.NumberFormat('es-PY').format(valor) + ' ₲';
+        }
+
+        function guardarProducto(e) {
+            e.preventDefault();
+            const id = document.getElementById('p-id').value;
+            const nombre = document.getElementById('p-nombre').value.trim();
+            const costo = parseFloat(document.getElementById('p-costo').value);
+            const venta = parseFloat(document.getElementById('p-venta').value);
+
+            if (id) {
+                // Editar existente
+                productos = productos.map(p => p.id == id ? { ...p, nombre, costo, venta, ganancia: venta - costo } : p);
+            } else {
+                // Nuevo producto
+                productos.push({ id: Date.now(), nombre, costo, venta, ganancia: venta - costo });
+            }
+
+            localStorage.setItem('kb_productos', JSON.stringify(productos));
+            cancelarEdicion();
+            renderProductosCaja();
+            renderTablaProductos();
+        }
+
+        function editarProducto(id) {
+            const p = productos.find(item => item.id === id);
+            if (!p) return;
+
+            document.getElementById('p-id').value = p.id;
+            document.getElementById('p-nombre').value = p.nombre;
+            document.getElementById('p-costo').value = p.costo;
+            document.getElementById('p-venta').value = p.venta;
+
+            document.getElementById('titulo-form-producto').innerText = 'Editar Bebida';
+            document.getElementById('btn-guardar-prod').innerText = '✏️ Actualizar';
+            document.getElementById('btn-cancelar-edit').classList.remove('hidden');
+        }
+
+        function cancelarEdicion() {
+            document.getElementById('p-id').value = '';
+            document.getElementById('form-producto').reset();
+            document.getElementById('titulo-form-producto').innerText = 'Cargar Nueva Bebida';
+            document.getElementById('btn-guardar-prod').innerText = '💾 Guardar';
+            document.getElementById('btn-cancelar-edit').classList.add('hidden');
+        }
+
+        function eliminarProducto(id) {
+            if (confirm('¿Eliminar esta bebida del inventario?')) {
+                productos = productos.filter(p => p.id !== id);
+                localStorage.setItem('kb_productos', JSON.stringify(productos));
+                renderProductosCaja();
+                renderTablaProductos();
+            }
+        }
+
+        function renderTablaProductos() {
+            const tbody = document.getElementById('tabla-productos');
+            tbody.innerHTML = productos.map(p => `
+                <tr class="border-b hover:bg-gray-50">
+                    <td class="p-3 border font-semibold">${p.nombre}</td>
+                    <td class="p-3 border text-right text-gray-600">${formatoMoneda(p.costo)}</td>
+                    <td class="p-3 border text-right font-bold text-indigo-700">${formatoMoneda(p.venta)}</td>
+                    <td class="p-3 border text-right text-green-600 font-bold">${formatoMoneda(p.ganancia)}</td>
+                    <td class="p-3 border text-center space-x-2">
+                        <button onclick="editarProducto(${p.id})" class="text-indigo-600 hover:text-indigo-900 font-bold">✏️ Editar</button>
+                        <button onclick="eliminarProducto(${p.id})" class="text-red-600 hover:text-red-800 font-bold">🗑️ Eliminar</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function renderProductosCaja(filtro = '') {
+            const contenedor = document.getElementById('lista-productos');
+            const filtrados = productos.filter(p => p.nombre.toLowerCase().includes(filtro.toLowerCase()));
+
+            contenedor.innerHTML = filtrados.map(p => `
+                <button onclick="agregarAlCarrito(${p.id})" class="p-3 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-left flex flex-col justify-between transition shadow-sm">
+                    <span class="font-bold text-gray-800 leading-tight">${p.nombre}</span>
+                    <div class="mt-2 flex justify-between items-baseline w-full">
+                        <span class="text-xs text-gray-500 font-semibold">P. Unit:</span>
+                        <span class="text-indigo-700 font-black text-base">${formatoMoneda(p.venta)}</span>
+                    </div>
+                </button>
+            `).join('');
+        }
+
+        function filtrarProductos() {
+            renderProductosCaja(document.getElementById('buscar-producto').value);
+        }
+
+        function agregarAlCarrito(idProducto) {
+            const prod = productos.find(p => p.id === idProducto);
+            const itemExistente = carrito.find(item => item.id === idProducto);
+
+            if (itemExistente) {
+                itemExistente.cantidad++;
+            } else {
+                carrito.push({ ...prod, cantidad: 1 });
+            }
+
+            renderCarrito();
+        }
+
+        function cambiarCantidad(id, cambio) {
+            const item = carrito.find(i => i.id === id);
+            if (item) {
+                item.cantidad += cambio;
+                if (item.cantidad <= 0) {
+                    carrito = carrito.filter(i => i.id !== id);
+                }
+            }
+            renderCarrito();
+        }
+
+        function renderCarrito() {
+            const tbody = document.getElementById('tabla-carrito');
+            let total = 0;
+
+            tbody.innerHTML = carrito.map(item => {
+                const subtotal = item.venta * item.cantidad;
+                total += subtotal;
+                return `
+                    <tr class="border-b">
+                        <td class="p-2 font-medium">${item.nombre}</td>
+                        <td class="p-2 text-right text-gray-600">${formatoMoneda(item.venta)}</td>
+                        <td class="p-2 text-center">
+                            <button onclick="cambiarCantidad(${item.id}, -1)" class="px-2 bg-gray-200 rounded font-bold">-</button>
+                            <span class="mx-1 font-bold">${item.cantidad}</span>
+                            <button onclick="cambiarCantidad(${item.id}, 1)" class="px-2 bg-gray-200 rounded font-bold">+</button>
+                        </td>
+                        <td class="p-2 text-right font-bold">${formatoMoneda(subtotal)}</td>
+                        <td class="p-2 text-center">
+                            <button onclick="cambiarCantidad(${item.id}, -${item.cantidad})" class="text-red-500 font-bold">❌</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            document.getElementById('txt-total').innerText = formatoMoneda(total);
+            calcularVuelto();
+        }
+
+        function calcularVuelto() {
+            const total = carrito.reduce((sum, i) => sum + (i.venta * i.cantidad), 0);
+            const pagado = parseFloat(document.getElementById('monto-pagado').value) || 0;
+            const vuelto = pagado - total;
+
+            const divVuelto = document.getElementById('txt-vuelto');
+            if (vuelto >= 0) {
+                divVuelto.innerText = formatoMoneda(vuelto);
+                divVuelto.className = "p-2 bg-green-100 rounded text-lg font-extrabold text-green-700";
+            } else {
+                divVuelto.innerText = "Falta: " + formatoMoneda(Math.abs(vuelto));
+                divVuelto.className = "p-2 bg-red-100 rounded text-lg font-extrabold text-red-700";
+            }
+        }
+
+        function procesarVenta() {
+            if (carrito.length === 0) return alert('El carrito está vacío.');
+
+            const total = carrito.reduce((sum, i) => sum + (i.venta * i.cantidad), 0);
+            const gananciaTotal = carrito.reduce((sum, i) => sum + (i.ganancia * i.cantidad), 0);
+            const pagado = parseFloat(document.getElementById('monto-pagado').value) || 0;
+
+            if (pagado < total) {
+                return alert('El monto pagado es menor al total de la compra.');
+            }
+
+            const rucCliente = document.getElementById('cliente-ruc').value.trim() || 'Sin RUC / C.I.';
+            const nombreCliente = document.getElementById('cliente-nombre').value.trim() || 'Sin Nombre';
+
+            const venta = {
+                id: Date.now(),
+                fecha: new Date().toLocaleString('es-PY'),
+                clienteRuc: rucCliente,
+                clienteNombre: nombreCliente,
+                items: [...carrito],
+                total: total,
+                ganancia: gananciaTotal,
+                pagado: pagado,
+                vuelto: pagado - total
+            };
+
+            ventas.unshift(venta);
+            localStorage.setItem('kb_ventas', JSON.stringify(ventas));
+
+            prepararFactura(venta);
+
+            carrito = [];
+            document.getElementById('monto-pagado').value = '';
+            document.getElementById('cliente-ruc').value = '';
+            document.getElementById('cliente-nombre').value = '';
+            renderCarrito();
+            renderHistorial();
+
+            window.print();
+        }
+
+        function prepararFactura(v) {
+            document.getElementById('fact-empresa-nombre').innerText = configuracion.nombre;
+            document.getElementById('fact-empresa-ruc').innerText = 'RUC: ' + configuracion.ruc;
+            document.getElementById('fact-empresa-dir').innerText = configuracion.direccion;
+            document.getElementById('fact-empresa-tel').innerText = 'Tel: ' + configuracion.telefono;
+
+            document.getElementById('fact-fecha').innerText = 'Fecha: ' + v.fecha;
+            document.getElementById('fact-cliente-nombre').innerText = 'Cliente: ' + v.clienteNombre;
+            document.getElementById('fact-cliente-ruc').innerText = 'RUC/CI: ' + v.clienteRuc;
+
+            const tbody = document.getElementById('fact-items');
+            tbody.innerHTML = v.items.map(i => `
+                <tr>
+                    <td>${i.cantidad}x</td>
+                    <td>${i.nombre}</td>
+                    <td class="text-right">${formatoMoneda(i.venta)}</td>
+                    <td class="text-right">${formatoMoneda(i.venta * i.cantidad)}</td>
+                </tr>
+            `).join('');
+
+            document.getElementById('fact-total').innerText = formatoMoneda(v.total);
+            document.getElementById('fact-pagado').innerText = formatoMoneda(v.pagado);
+            document.getElementById('fact-vuelto').innerText = formatoMoneda(v.vuelto);
+
+            document.getElementById('factura-impresion').classList.remove('hidden');
+        }
+
+        function renderHistorial() {
+            const tbody = document.getElementById('tabla-historial');
+            let totalVentasAcumuladas = 0;
+            let totalGananciaAcumulada = 0;
+
+            tbody.innerHTML = ventas.map(v => {
+                totalVentasAcumuladas += v.total;
+                totalGananciaAcumulada += v.ganancia;
+
+                const detalle = v.items.map(i => `${i.cantidad}x ${i.nombre} @ ${formatoMoneda(i.venta)}`).join(', ');
+
+                return `
+                    <tr class="border-b hover:bg-gray-50">
+                        <td class="p-3 border text-xs text-gray-500">${v.fecha}</td>
+                        <td class="p-3 border font-medium">${v.clienteNombre}<br><span class="text-xs text-gray-500">${v.clienteRuc}</span></td>
+                        <td class="p-3 border text-xs">${detalle}</td>
+                        <td class="p-3 border text-right font-bold">${formatoMoneda(v.total)}</td>
+                        <td class="p-3 border text-right font-bold text-green-600">+${formatoMoneda(v.ganancia)}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            document.getElementById('resumen-total-ventas').innerText = formatoMoneda(totalVentasAcumuladas);
+            document.getElementById('resumen-total-ganancia').innerText = formatoMoneda(totalGananciaAcumulada);
+        }
+
+        function cargarFormConfiguracion() {
+            document.getElementById('cfg-nombre').value = configuracion.nombre;
+            document.getElementById('cfg-ruc').value = configuracion.ruc;
+            document.getElementById('cfg-direccion').value = configuracion.direccion;
+            document.getElementById('cfg-telefono').value = configuracion.telefono;
+        }
+
+        function guardarConfiguracion(e) {
+            e.preventDefault();
+            configuracion = {
+                nombre: document.getElementById('cfg-nombre').value,
+                ruc: document.getElementById('cfg-ruc').value,
+                direccion: document.getElementById('cfg-direccion').value,
+                telefono: document.getElementById('cfg-telefono').value
+            };
+            localStorage.setItem('kb_config', JSON.stringify(configuracion));
+            alert('¡Datos de facturación actualizados con éxito!');
+        }
+    </script>
+</body>
+</html>
